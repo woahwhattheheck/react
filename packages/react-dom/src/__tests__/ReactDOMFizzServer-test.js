@@ -536,6 +536,14 @@ describe('ReactDOMFizzServer', () => {
     const serverFallback = container.getElementsByTagName('p')[0];
     expect(serverFallback.textContent).toBe('Loading...');
 
+    const removedNodes = [];
+    const observer = new window.MutationObserver(records => {
+      records.forEach(record => {
+        record.removedNodes.forEach(node => removedNodes.push(node));
+      });
+    });
+    observer.observe(container, {childList: true, subtree: true});
+
     const recoverableErrors = [];
     ReactDOMClient.hydrateRoot(container, <App />, {
       onRecoverableError(error) {
@@ -554,6 +562,11 @@ describe('ReactDOMFizzServer', () => {
       </div>,
     );
     expect(container.getElementsByTagName('p')[0]).toBe(serverFallback);
+    observer.takeRecords().forEach(record => {
+      record.removedNodes.forEach(node => removedNodes.push(node));
+    });
+    observer.disconnect();
+    expect(removedNodes).not.toContain(serverFallback);
 
     await clientAct(() => {
       resolveClientText('Loaded');
@@ -936,6 +949,44 @@ describe('ReactDOMFizzServer', () => {
       'Loaded',
     );
     expect(container.getElementsByTagName('p').length).toBe(0);
+  });
+
+  // @gate enableBrowserAPI
+  it('reveals browser-only content that only suspends on its deferred initial value', async () => {
+    const browserOnly = ReactDOM.browser();
+    const neverResolves = new Promise(() => {});
+    function BrowserOnly() {
+      use(browserOnly);
+      const value = React.useDeferredValue('Final', 'Initial');
+      if (value === 'Initial') {
+        use(neverResolves);
+      }
+      Scheduler.log(value);
+      return <span>{value}</span>;
+    }
+
+    function App() {
+      return (
+        <div>
+          <Suspense fallback={<p>Loading...</p>}>
+            <BrowserOnly />
+          </Suspense>
+        </div>
+      );
+    }
+
+    await act(() => {
+      const {pipe} = renderToPipeableStream(<App />);
+      pipe(writable);
+    });
+
+    ReactDOMClient.hydrateRoot(container, <App />);
+    await waitForAll(['Final']);
+    expect(getVisibleChildren(container)).toEqual(
+      <div>
+        <span>Final</span>
+      </div>,
+    );
   });
 
   // @gate enableBrowserAPI

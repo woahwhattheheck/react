@@ -3205,7 +3205,10 @@ function updateDehydratedSuspenseComponent(
       // Neither the props, legacy context nor any context propagated into
       // this boundary changed, so the server fallback is still up to date.
       !didReceiveUpdate &&
-      !includesSomeLane(renderLanes, current.childLanes)
+      !includesSomeLane(renderLanes, current.childLanes) &&
+      // The content spawned a deferred render (useDeferredValue). Only the
+      // regular fallback path schedules it on the primary children.
+      !didPrimaryChildrenDefer
     ) {
       // The server rendered the fallback because the content is browser-only
       // and we tried to client render the content, but that suspended.
